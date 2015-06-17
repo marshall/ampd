@@ -1,0 +1,165 @@
+#!/usr/bin/perl
+
+# Defaults:
+# install-dir : ~/ampd
+# mpg123	:	mpg123
+# catalog	:	~/.ampd_catalog
+# use-color	:	yes
+
+
+my @flags = (
+'--install-dir',	'-i',
+'--mpg123',			'-mpg123',
+'--catalog',		'-cat',
+'--use-color',		'-color',
+'--use-gui',		'-gui'
+);
+
+map { ($a, $b) = split /=/; $a =~ s/\-//g; $flag{$a} = $b;} @ARGV;
+
+$flag{installdir} 	||= '~/ampd';
+$flag{mpg123}		||= 'mpg123';
+$flag{catalog}		||=	'~/.ampd_catalog';
+$flag{usecolor}		||= 'yes';
+$flag{usegui}		||= 'yes';
+
+print "Installing ampd $VER\n";
+chop($pwd = `pwd`);
+print "Making install-dir ($flag{installdir})\n";
+`mkdir $flag{installdir}`;
+print "cd $flag{installdir}\n";
+chdir($flag{installdir});
+print "cp -R $pwd/* $flag{installdir}\n";
+`cp -R $pwd/* $flag{installdir}`;
+print "Creating config file as \'~/.ampd\'\n";
+open(config, "+>$ENV{HOME}/.ampd") || die "Couldn\'t open config file, $!\n";
+
+print config <<CONFIG;
+
+#
+# ampd configuration file
+#  
+
+# use_time : Set this to zero if you don't want to download the MPEG::MP3Info
+# module from CPAN
+
+use_time = 1
+
+# use_genres: Set this to zero if you don't want to use the enormous genre
+# array
+ 
+use_genres = 1
+
+# use_nav: This isn't working yet, but if you want to use it anyway (it will
+# do nothing except include Term::ReadKey)
+
+# use_nav = 1
+
+# use_color: Set this to zero if you don't want color ampd (will revert to
+# black and white)
+
+use_color = 1
+
+# term: The term type you have (defaults to the environment TERM)
+# don't change this unless you really need to..
+
+# term =
+
+# redirect: I would keep this if I were you (This redirects STDERR so that
+# cdparanoia and mpg123 don't show up..if you disable this it gets really ugly)
+
+redirect = 1
+
+# busy_icon: While a song is playing, you can have one of two animations keep
+# you entertained. 
+# '|' (default) - spinning line or
+# 'o' - circle changing sizes
+
+busy_icon = |
+
+# mpg123: The path where mpg123 is (most people have it in /usr/bin/ or
+# /usr/local/bin so just type in 'mpg123' if that is the case.
+
+mpg123 = mpg123
+
+# cdparanoia : The path where cdparanoia is ('which cdparanoia' is evaluated if # this is undefined)
+
+cdparanoia = cdparanoia
+
+# eject : Whether or not to auto-load an audio CD for the '--encode' option
+# (If you'd rather put it in yourself)
+
+eject = 0
+
+# catalog: The path and filename where you want the catalog to be stored
+# (Default is ~/.ampd_catalog)
+
+catalog = ~/.ampd_catalog
+
+# These are the colors and attribute settings for each thing that is displayed
+# in ampd. Here's the available colors and attributes:
+# COLORS
+# 	Foreground
+#		black
+#		red
+#		green
+#		yellow
+#		blue
+#		magenta
+#		cyan
+#		white
+#	Background
+#		black
+#		red
+#		green
+#		yellow
+#		blue
+#		magenta
+#		cyan
+#		gray
+# ATTRIBUTES
+#		none
+#		bold	
+#		underline
+#		blink
+#		reverse
+#		concealed
+#
+# attrib = attribute,
+# fg = foreground,
+# bg = background
+	
+file_attrib    = bold 
+file_fg        = yellow
+file_bg        = gray
+
+title_attrib   = bold
+title_fg       = black
+title_bg       = gray
+ 
+artist_attrib  = bold
+artist_fg      = black
+artist_bg      = gray
+
+album_attrib   = bold
+album_fg       = black
+album_bg       = gray
+ 
+genre_attrib	= bold
+genre_fg		= black
+genre_bg		= gray
+
+main_bg        = gray
+status_fg      = blue 
+status_bg      = gray 
+ 
+elapsed_attrib = bold
+elapsed_fg     = blue
+elapsed_bg     = gray
+ 
+total_attrib   = bold
+total_fg       = blue
+total_bg       = gray
+CONFIG
+print "Success!\n";
+exit;

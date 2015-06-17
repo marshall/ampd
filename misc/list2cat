@@ -1,0 +1,77 @@
+#!/usr/bin/perl
+
+##################################################
+# list2cat - ampd playlist to ampd catalog script
+# Yes, this is almost a direct copy of functions already in ampd, but I wanted a small script for people who wanted to add their
+# playlists to their catalog.
+#
+# ~Marshall
+##################################################
+
+die <<USAGE if !@ARGV;
+Usage:
+list2cat playlist [-s section] [-d]
+
+	-s 	you can specify the name of the section list2cat creates (default is the name of the playlist)
+	-d	delete the playlist after converting it
+USAGE
+
+my $playlist = shift;
+
+my $section_name = $playlist;
+
+while($_ = shift){
+	$section_name = shift if $_ eq '-s';
+	$delete = 1 if $_ eq '-d';
+}
+
+open(plist,$playlist) || die "Playlist couldn\'t be opened on error: $!\n";
+while (<plist>){
+	next if /^#/;
+	if (/ALIAS\s?\t?\{/ || $block == 1){
+ 	       $block = 1;
+       		$block = 0 if /^\s?\t?\}/;
+      		 $ALIAS[$1]=$2 if /^(\d)\s*\t*=\s*\t*(.*)$/;
+	}
+	$type='song' if /\;/;
+	($order,$song,$times)=split ';' if $type eq 'song';
+	$song =~ s/\$(\d+)/$ALIAS[$1]/eg;
+	next if !$song || !$times || !$order || !$type;
+	$PLIST{$order}=$song;
+}
+
+
+print "Creating Section \'$section_name\...\n'";
+open(CAT, ">>$ENV{HOME}/.ampd_catalog") or die "Unable to open the ampd catalog : $!\n";
+print CAT "_SECTION $section_name {\n";
+$id = 0;
+foreach(sort bynum keys %PLIST )
+{
+        $id++;
+        my @info = read_ID3($PLIST{$_});
+        ($title, $artist, $album) = @info[1..3];
+        if($info[0] ne 'TAG'){ $title = 0; $artist = 0; $album = 0 }
+        print "Adding \'$PLIST{$_}\'...\n";
+        print CAT <<THIS;
+        FILE[$id] = $pwd/$PLIST{$_}
+        LABEL[$id] = $title
+        ARTIST[$id] = $artist
+        ALBUM[$id] = $album
+
+THIS
+}
+print CAT "}\n";
+print "Deleting Playlist \'$playlist\'...\n" if $delete and unlink($playlist);
+print "Done\n";
+
+sub read_ID3{
+        # Thanks to www.id3.org for the great info.
+        my ($file)=@_;
+        open(MP3,$file) || die "Couldn't open \'$file\' for reason : $!\n";
+        seek(MP3,-128,2);
+        read(MP3,$info,128);
+        return unpack('a3a30a30a30a4a30C1',$info);
+}
+sub bynum{$a<=>$b}	
+
+

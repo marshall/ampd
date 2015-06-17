@@ -1,0 +1,50 @@
+Info:
+------
+
+From ampd version 2.0 on, ampd will have a graphic user interface, and the
+command line tool will only be hacked on to make minor perfections (for those
+of you who absolutely have to have the command line)
+
+What's Needed:
+---------------
+
+I haven't tested ampd with anything else, so I recommend:
+
+perl 5.005_03
+perl / Tk (you can download from CPAN)
+MPEG::MP3Info
+Gnome / KDE / Some WM
+
+and that's it!
+note: I have no test platforms so here are my machine specs:
+
+Mandrake Linux 7.0
+perl 5.005_03
+perl / Tk 800.018
+MPEG::MP3Info
+bash
+KDE
+etc.
+
+News for version 2.0a:
+-----------------------
+
+This version is NOT complete yet, but I wanted something for people to play
+with. I'm sure not everything works, but I haven't had a new release in
+sometime now, and I'm sure this will make everyone excited! 
+
+Yes, Navigation is in tact, yes the perl module is included, and yes the
+GUI works (on my system anyway, see What's Needed). ampd has migrated from a
+script to a programmers interface with a gui built on top of it. I hope that
+ampd.pm will help people program their own version of ampd (I'm possibly
+thinking of submitting it to CPAN when it is more stable). This new version of
+ampd is _almost_ a total rewrite, and I hope you like it! :)
+
+- New GUI!!! very slick interface :)
+- ampd.pm - a programmer's interface to ampd (useful for quick scripts)
+- navigation!!! Wow, I never thought it would be possible, but I knocked out 3
+  things that were on the wish list :) Now you can go forward, backward, stop,
+	and play!
+- Loads of other cool stuff!!
+
+check it out!

@@ -1,0 +1,447 @@
+#!/usr/bin/perl
+
+use ampd;
+use Tk;
+use Tk::ProgressBar;
+
+$VER = "2.0";
+
+open SAVEERR, ">&STDERR";
+open STDERR, ">/dev/null";
+
+$completed = "Awaiting Command..";
+
+$artist_info = "Welcome to the all new ampd 2.0!";
+
+SetupGUI();
+ 
+sub SetupGUI{
+	
+	#-------------------#
+	# Main Window Setup #
+	#-------------------#
+	
+	$window = new MainWindow();
+	$window->Icon(-image => $window->Pixmap(-file => "images/ampd.xpm"));
+	$window->configure( -title => "ampd $VER", -background => "#000080"  );
+	$window->OnDestroy(sub{$STOP=1});
+	
+	# Font. 
+	
+	$font = $window->Font(	-family => 'arial',
+							-size => 10,
+							-weight => normal);
+	$smallfont = $window->Font(	-family => 'arial',
+								-size => 8,
+								-weight => normal);
+	$font_bold = $window->Font(	-family => 'arial',
+								-size => 10,
+								-weight => bold);
+	
+	$smallfont_bold = $window->Font(-family => 'arial',
+									-size => 8,
+									-weight => bold);
+
+	#-------------------#
+	#    Frame Setup    #
+	#-------------------#
+
+	$menu_bar = $window->Frame(	-relief => flat,
+								-borderwidth => 0,
+								-background => "#d5d8d9" 
+						)->pack(-side=>'top',
+								-fill=>'x');
+	
+	$main = $window->Frame( -background => "black", 
+							-borderwidth => 2
+					)->pack(-side => top, 
+							-fill => x, 
+							-padx => 0, 
+							-pady => 0);
+	
+	$song_bar = $main->Frame(	-relief => groove,
+							-borderwidth => 3,
+							-background => "#001832",
+					)->pack(-side=>'top',
+							-fill=>'x',
+							-padx => 0, 
+							-pady => 0);
+
+	$main_frame = $main->Frame( -relief => groove,
+								-borderwidth => 0,
+								-background=>"black"
+						)->pack(-side=>'top',
+								-fill=>'x',
+								-padx => 0,
+								-pady => 0);
+	
+	$time_bar = $main->Frame(	-relief => groove,
+								-borderwidth => 3,
+								-background => "#001832"
+					)->pack(	-side=>'top',
+								-fill=>'x',
+								-padx => 0,
+								-pady => 0);
+	
+	#-------------------#
+	#    Progress Bar   #
+	#-------------------#
+
+	$progress = $time_bar->ProgressBar( -troughcolor => "black",
+										-borderwidth => 4,
+										-width => 20,
+										-height => 0,
+										-from => 1,
+										-to => 100,
+										-blocks => 10,
+										-gap => 10,
+										-colors => [0 , "#001832"],
+										-variable => \$percent_done
+							)->pack(	-side => left,
+										-anchor=> 'nw',
+										-padx => 0,
+										-pady => 0);
+
+		
+	$sections = $main_frame->Listbox(-background => black, 
+									-borderwidth => 0,
+									-width => 50,
+									-height => 10,
+									-relief => flat,
+									-highlightbackground => black,
+									-foreground => white,
+									-font => $font
+							)->pack(-side => top);
+	
+
+	$del_sec = $main_frame->Button(	-image => $main_frame->Pixmap(
+										-file => 'images/remove.xpm'),
+									-borderwidth => 0,
+									-highlightthickness => 0,
+									-background => 'black',
+									-activebackground => 'black',
+									-foreground => 'white',
+									-activeforeground => 'white',	
+									-relief => 'groove',
+									-width => 57,
+									-height => 26,
+									-command => \&RemoveSection
+							)->pack(-side => 'left');
+	
+	$create_sec = $main_frame->Button(	-image => $main_frame->Pixmap(
+											-file => 'images/create.xpm'),
+										-borderwidth => 0,
+										-highlightthickness => 0,
+										-background => "black",
+										-activebackground => "black",
+										-foreground => 'white',
+										-activeforeground => 'white',
+										-relief => 'groove',
+										-width => 57,
+										-height => 26,
+										-command => \&CreateSection
+								)->pack(-side => 'left');
+	
+	$addsong_sec = $main_frame->Button(-image => $main_frame->Pixmap(
+											-file => 'images/add_song.xpm'),
+									-background => "black",
+									-borderwidth => 0,
+									-highlightthickness => 0,
+									-activebackground => "black",
+									-activeforeground => 'white',
+									-foreground => 'white',
+									-relief => 'groove',
+									-width => 57,
+									-height => 26,
+									-command => \&AddSong
+							)->pack(-side => 'left');
+	
+	LoadSections($sections);
+		
+	$artist_label = $song_bar->Label( -textvariable => \$artist_info, 
+									-background => "#001832",
+									-foreground => white,
+									-font => $font_bold,
+									)->pack;
+	
+	$nav_bas = $time_bar->Button(	-relief => flat,
+									-background => "#001832",
+									-activebackground => "#001832",
+									-foreground => gray, 	
+									-highlightthickness => 0,
+									-image => $main->Pixmap(
+										-file => "images/prev.xpm"
+									),
+									-command => sub{$PREV=1},
+									-borderwidth => 0, 
+									-width => 16,
+									-height => 16
+						)->pack(	-side => left,
+								 	-anchor => 'n', 
+									-padx => 0, 
+									-pady => 0);
+	
+	$nav_fas = $time_bar->Button(	-relief => flat,
+									-command => sub{$NEXT=1},
+									-background => "#001832",
+									-activebackground => "#001832",
+									-foreground => gray,
+									-highlightthickness => 0,
+									-borderwidth => 0,
+									-image => $main->Pixmap(
+										-file => "images/next.xpm"
+									),
+									-width => 16,
+									-height => 16
+						)->pack( 	-side => left,
+									-anchor => 'n',
+									-padx => 0,
+									-pady => 0);
+	
+
+
+	$nav_play = $time_bar->Button(	-relief => flat,
+									-background => "#001832",
+									-activebackground => "#001832",
+									-foreground => gray,
+									-highlightthickness => 0,
+									-image => $main->Pixmap(
+										-file => "images/play.xpm"
+									),
+									-command => \&Play,
+									-borderwidth => 0,
+									-width => 16,
+									-height => 16
+						)->pack(	-side=> left,
+									-anchor => 'n',
+									-padx => 0,
+									-pady => 0);
+
+	$nav_stop = $time_bar->Button(	-relief => flat,
+									-background => "#001832", 
+									-activebackground =>"#001832",
+									-foreground => gray,
+									-highlightthickness => 0,
+									-image => $main->Pixmap(
+										-file => "images/stop.xpm"
+									),
+									-command => sub{$STOP=1},
+									-borderwidth => 0,
+									-width => 16,
+									-height => 16
+						)->pack(	-side => left,
+									-anchor => 'n',
+									-padx => 0,
+									-pady => 0);	
+	
+	$total_complete = $time_bar->Label( -textvariable => \$total_stat, 
+										-font => $font_bold,
+										-background => "#001832",
+										-foreground => 'white')->pack(-side => right, -anchor => 'n');
+
+	$complete_label = $time_bar->Label( -textvariable => \$completed ,
+										-font => $font_bold,
+										-background => "#001832",
+										-foreground => 'white'
+							)->pack(	-side =>right,
+										-anchor=>'sw'); 
+
+	MainLoop();
+}
+
+sub Play{
+
+		
+	# Just in case you change your mind :)
+	$PLAYING = 1;
+	# $section_contents->delete(0,'end');
+		
+	my $catalog = new Catalog;
+
+	$catalog->open;
+
+	my $idx = $sections->curselection;
+	my $to_play = $sections->get($idx);
+	my @songs = sort bynum keys(%{ $catalog->{$to_play} });
+	my $a = 0;
+	#for(@songs){
+	#	my $file = $catalog->{$to_play}{$_}{file};
+	#	$file =~ s,[^/]*/+,,g;
+	#	$a++;
+	#	$section_contents->insert('end', "$a. $file");
+	#}
+	
+	while ($i <= @songs)
+	{
+		$i++ if !$STOP;
+		$total_stat = " $i of " . scalar(@songs);		
+		if ($PREV)
+		{
+			$i -= 2;
+			undef $PREV;
+		}
+		$i = $i < 0 ? $#songs : $i;
+		$i = $i > $#songs ? 1 : $i; 
+		if ($STOP)
+		{
+			undef $STOP;
+			$i = 1;
+			last;
+		}
+		$catalog->play(	
+					-section => $to_play,
+					-song => $i,
+					-init => \&init,
+					-playing => \&playing,
+					-end => \&end
+		);
+	}
+}
+
+sub LoadSections{
+
+	my ($listbox) = @_;
+	my $catalog = new Catalog;
+	$catalog->open;
+	$listbox->delete(0,'end');
+	for(sort $catalog->sections)
+	{
+		$listbox->insert('end', $_);
+		
+	}
+	
+}
+
+sub init{
+	($tag, $title, $artist, $album, $year, $comment, $g, $MM, $SS) = @_;
+	$artist_info = "$artist -  $title - $album - $genres->[$g]";
+	$total_sec = ($MM * 60) + $SS;
+}		
+
+sub playing{
+	my ($seconds) = @_;
+	
+	$percent_done = int(($seconds / $total_sec) * 100); 
+	update();
+	
+	$m = int($seconds / 60);
+	$s = $seconds >= ($m * 60) ? abs(($m * 60) - $seconds) : abs((($m - 1) * 60) - $seconds);
+	$completed = sprintf("%02d:%02d", $m, $s);
+
+
+	if($NEXT)
+	{
+		undef $NEXT;
+		return 1;
+	}
+	if($PREV)
+	{
+		return 1;
+	}
+	if($STOP)
+	{
+		return 1;
+	}
+}	
+
+
+sub end{
+	$completed = 'Finished'
+}
+
+sub update{
+
+	# Widget update sub (we don't want a frozen form :)
+
+	$main->update;
+	$main_frame->update;	
+	$song_bar->update;
+	$time_bar->update;
+	$progress->update;
+	$sections->update;
+	$artist_label->update;
+	$complete_label->update;
+	$nav_fas->update;
+	$nav_bas->update;
+	$nav_play->update;
+	$nav_stop->update;	
+	$create_sec->update;
+	$addsong_sec->update;
+	$del_sec->update;
+
+}
+sub bynum{$a <=> $b}
+
+sub CreateSection{
+
+	my $top = $window->Toplevel;
+	$top->title('Create Section');
+	my $top_frame = $top->Frame(-background => "black", 
+								-foreground => white 
+						)->pack(-side => 'top',
+								-fill => 'y');
+
+	my $l1 = $top_frame->Label(	-background => "black", 
+								-foreground => white, 
+								-text => 'Section Name: ')
+						->pack( -side => left );
+	
+	my $section = $top_frame->Entry(-width => 15
+							)->pack(-side => left);
+
+	my $l2 = $top_frame->Label(	-background => "black",
+							 	-foreground => white,
+								-text => 'Directory: '
+						)->pack(-side => left);
+	
+	my $dir = $top_frame->Entry(-width => 15
+						)->pack(-side => left);
+	
+	my $l3 = $top_frame->Label(	-background => "black",
+								-textvariable => $status
+						)->pack(-side => left);	
+	
+
+
+	my $button = $top_frame->Button(-image => $top_frame->Pixmap(
+										-file => 'images/create.xpm'),
+									-background => "black",
+									-activebackground => "black",
+									-relief => groove,
+									-borderwidth => 0,
+									-highlightthickness => 0,
+									-command => sub{
+										my $c = new Catalog;
+										$c->open;
+										$c->add( -section => $section->get,
+											-directory => $dir->get,
+											-statvar => \$status);
+									}
+							)->pack(-side => bottom);
+	
+	my $close = $top_frame->Button(-image => $top_frame->Pixmap(
+										-file => 'images/cancel.xpm'),
+									-relief => groove,
+									-borderwidth => 0,
+									-highlighthickness => 0,
+									-background => "black",
+									-activebackground => "black",
+									-command=>sub{$top->destroy}
+							)->pack(-side => bottom);
+
+}
+
+sub RemoveSection{
+
+	my $index = $sections->curselection;
+	my $section = $sections->get($index);
+
+	my $catalog = new Catalog;
+	$catalog->open;
+	
+	$catalog->remove( -section => $section );
+
+	$catalog->update;
+
+	LoadSections($sections);
+}	

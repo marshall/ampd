@@ -1,0 +1,215 @@
+Important : the command line version of ampd now resides in /path/to/ampd/misc,
+some work will still be done on it, but a code freeze is expected soon.
+
+Documentation for ampd
+
+About
+-------
+
+	ampd is a command-line based frontend to mpg123 based on perl, boredom, my
+love for music, and countless gallons of pepsi :).
+	It uses playlists and directory structures to make mpg123 much easier (and prettier!) to use.
+	Currently ampd has its own interface, and is very configurable, but more things will be added in the future so email me if you have have any suggestions!
+
+	~Marshall
+
+Installation Instructions:
+--------------------------
+	
+	1) Untar and Gunzip the ampd-XX.XX.tar file into any directory,
+	2) Open ~/.ampd and configure away.. (see config)
+
+Config:
+---------
+
+The config file should always lay in ~/.ampd
+
+There are many options available for you to configure, most of it is pretty
+self explanatory, and the configuration comments should explain further if you
+really need extra help
+
+Note:Navigation is currently NOT working, so set this to zero (setting it to 1
+will just make for more loading time and no navigation anyway)
+
+a sample ampd.conf is included in this package.
+
+Usage:
+----------
+Usage: ampd [options] <[playlist(s)] | [song(s)] | [directory(s)]>
+
+options:
+
+[-m  	| --make	]
+[-ma 	| --make-sort-a	]
+[-mn 	| --make-sort-n	]
+[-mp	| --make-play	]...make a playlist out of the directories specified
+
+[-cat	| --catalog 	]..catalog (see catalog section)
+[-r	| --repeat	]
+[-rp	| --repeat-list	]...repeat [playlist] or [song] (song by default),
+
+[-1	| --play-once	]...play [song] once,
+
+[-s	| --shuffle	]...shuffle [playlist],
+
+[-d 	| --dir		]...play all mp3's in [directory(s)],
+	
+[-v 	| --version	]...display version,
+
+
+	-m , --make will create a playlist out of the directories you specify (the last argument will ALWAYS be the file that ampd writes the playlist too) and sort them a(lphabetically) or n(umerically)
+	put a "p" at the end of the tag to play the playlist after it is finished creating it.
+
+	-cat, --catalog is for catalog management, see the Catalog section
+	
+	-r, --repeat will repeat (forever!!) (p)laylist or (s)ong.
+
+	-1, --play-once is a quick 1-liner to play a single mp3 once.
+
+	-s, --shuffle  will shuffle a playlist that you specify.
+
+	-d, --dir  will open all the directories you specify and play all the mp3s in them.
+
+	-v, --version  will display the current version.
+
+	ampd searches for mp3s that have the '.mp3' extension, so if you named your mp3s without the '.mp3' extension, than you will have to make your own playlist.
+
+	To skip a song while playing an mp3 just hit 'Ctrl-C' (note, to quit out of ampd, press and hold 'Ctrl-C' for a sec :)
+
+
+Playlist Format:
+-----------------
+
+	I've tried to make this as simple and robust as possible.
+	In most cases it is easier for ampd to make the playlist for you, but if you have quite a few mp3s you want to put in yourself, then here's how to write your own:
+
+	Playlists are plain flat text files
+
+	Comments start with the normal shell '#';
+
+	i.e #This is a comment
+
+	You are allowed to have ONE ALIAS block..ALIAS's are useful if you have a long directory name that you don't want to write over and over again in the playlist.
+	Here's how an ALIAS block is conducted:
+
+	ALIAS{
+
+	1=whatever_you_want
+	2=whatever_you_want_again
+
+	}
+
+	To refer to ALIAS's further down the script you just prepend a '$' symbol to the ALIAS, so for example:
+
+	$1 would be 'whatever_you_want'
+	$2 would be 'whatever_you_want_again'
+
+	Every line must have a new mp3 on it, This is the way it's split up:
+
+	ORDER;FULL_PATH_TO_MP3;NUM_OF_TIMES_TO_PLAY
+
+	So for example, you have 3 mp3s in /usr/mp3/ that you want to play. Here's a small example playlist:
+
+	### Example Playlist
+
+	ALIAS{
+
+	1 = /usr/mp3
+
+	}
+
+	1;$1/1.mp3;2
+	2;$1/2.mp3;1
+	3;$1/3.mp3;3
+
+	### End
+
+	This playlist would play /usr/mp3/1.mp3 2 times, then /usr/mp3/2.mp3 1 time, and finally /usr/mp3/3.mp3 3 times.
+
+Catalog:
+--------
+The catalog is a pretty nice extension to ampd.
+
+Now you can store all of your mp3s in one 'internal' catalog, and play, edit,
+and delete these songs to your liking.
+(NOTE: if you want to edit the catalog yourself, open up ~/.ampd_catalog :)
+The catalog is a hierarchy of sections and songs.
+
+Each section of the catalog can have up to 30 songs.
+
+Currently, to access the catalog commands you type in:
+ampd (-cat | --catalog) [option] args..
+
+option can be any of these:
+
+play:
+----
+
+Play a certain section or song out of a section 
+example: ampd --catalog play my_section
+		ampd --catalog play my_section/1
+	
+
+make:
+-----
+
+Conducted nearly the same as making a playlist, this will make a section
+out of a directory of mp3s for you (numerically sorting them, and using their
+ID3 tags for default data)
+example: ampd --catalog make /mp3/my_mp3s/ my_mp3s
+		
+this will make a section in the catalog called 'my_mp3s' out of all of the mp3s
+in /mp3/my_mp3s
+
+print:
+------
+
+This will print the catalog
+
+ampd --catalog print
+
+del:
+----
+
+Delete a specified section of the catalog.
+
+ampd --catalog del my_mp3s
+
+This will delete my_mp3s from the catalog
+
+rename:
+-------
+
+Rename a section of the catalog (In case you're fickle like me :)
+
+ampd --catalog rename my_mp3s mp3s
+
+rename my_mp3s to mp3s.
+
+
+Final Thoughts:
+---------------
+
+	ampd is free software, and you are free to distribute it, edit it, blow it up, and even submit patches!!
+
+	ampd works great on my i586 Mandrake Linux 7.0 / perl 5.005_03.
+	I'm sure it doesn't run perfect on _everything_,
+	 so submit all bugs, comments, etc. to ampd@mail.com (ICQ: 18313517, AOL: need pepsy)
+
+	I've added a small script (tag.pl) to edit the ID3 tag of a script, it's
+small and it works (maybe not perfectly?)
+	also, check out http://emuhq.com/linux :)
+
+Needed Help:
+--------------
+
+	I need some help doing playlist navigation...there's about 20 lines of
+	code commented out in the loadlist() function, this is my attempt at it (but
+	obviously it's not working) If you could shed some insite, that would be great.	
+
+	I've also included the preliminary gui frontend(it's been hacked on every
+now and then), all it does is
+	nothing practically, I'm trying to figure out how to keep a constant update to
+	a label on the form..but that doesn't seem to be working like I want it to..
+
+

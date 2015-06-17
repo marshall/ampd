@@ -1,0 +1,30 @@
+NOTE : From v2.0 on, ampd uses gui, this install needs to be done, but the
+configuration file is used for the command-line ampd only (for now)
+
+
+Woohoo! An INSTALL file for ampd :)
+
+Starting with version 1.7.0, ampd has a small script (install_ampd) that will
+install the ampd configuration file, and ampd itself for you.
+
+Start off by grabbing the latest tarball at http://ampd.virtualave.net
+
+Then, do these commands:(replace XX.XX.XX with the current version)
+
+	tar -xvzf ampd-XX.XX.XX.tar.gz
+
+	cd ampd-XX.XX.XX
+	
+From here, you should run the script, here are the few configurable options:
+
+--install-dir[=installdir]		the directory to install ampd and its scripts
+								(defaults to ~/ampd)
+--mpg123[=/path/to/mpg123]		what you type in to execute mpg123
+								(default:mpg123)
+--catalog[=/path/to/catalog]	where you want the ampd internal catalog stored
+								(default: ~/.ampd_catalog)
+--use-color[=yes/no]			whether or not to use color (default:yes)	
+
+Also, make sure if you want ampd to be in PATH that you link it, not copy it.
+ampd relies on images in the /path/to/ampd/images directory.
+

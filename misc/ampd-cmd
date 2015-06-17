@@ -1,0 +1,765 @@
+#!/usr/bin/perl
+
+##########################################
+#    ampd (A Mp3 Playlist Daemon)
+#    Copyright (C) 2000 Marshall Culpepper
+#    see "COPYING" for terms of the GPL.
+##########################################
+
+configure();
+
+LoadGenres() if $config->{use_genres};
+LoadColors() if $config->{use_color};
+
+if ($config->{use_time})
+{
+use MPEG::MP3Info;
+}
+if ($config->{use_nav})
+{
+use Term::ReadKey;
+}
+
+# Termcap modules for perl
+require Term::Cap;
+# POSIX for getting the ospeed
+use POSIX;
+# flush STDOUT on every write
+$| = 1;
+
+my $termios = new POSIX::Termios;
+$termios->getattr;
+my $o = $termios->getospeed;
+
+$TERM = $config->{term} || $ENV{TERM};
+my $terminal = Tgetent Term::Cap { TERM => $TERM , OSPEED => $o };
+$terminal->Trequire(qw/ce ku kd/);
+
+$VER = "1.7.5";
+$mpg123 = $config->{mpg123} || chop($a=system("which mpg123"));
+die_nice("Error: mpg123 not found, try inserting it into \'~/.ampd\' or go download
+it!\n") if !$mpg123;
+
+$flag = $ARGV[0];
+my $flaghandler = {	
+	'-s' 	=> 'shuffle',	'--shuffle'		=> 	'shuffle',
+	'-c' 	=> 'count', 	'--count'		=> 	'count',
+	'-d' 	=> 'dir',		'--dir'			=> 	'dir',
+	'-ma'	=> 'mke',		'--make-sort-a'	=> 	'mke',	
+	'-mn'	=> 'mke', 		'--make-sort-n'	=> 	'mke',
+	'-m'	=> 'mke',		'--make'		=> 	'mke',
+	'-mp'	=> 'mke',		'--make-play'	=> 	'mke',
+	'-r' 	=> 'repeat',	'--repeat'		=> 	'repeat',
+	'-rp'	=> 'repeat', 	'--repeat-list'	=>	'repeat',
+	'-rs'	=> 'repeat',	'--repeat-song'	=>	'repeat',
+	'-1' 	=> 'single',	'--play-once'	=>	'single',
+	'-v'	=> 'version',	'--version'		=> 	'version',
+	'-cat'	=> 'catalog',	'--catalog'		=>	'catalog',
+	'-enc'	=> 'encode',	'--encode'		=>	'encode'	
+};
+
+usage() if !$flag;
+
+redirect() if $config->{redirect};
+
+my $func = $flaghandler->{$flag};
+
+&$func if $func;
+ 
+for(@ARGV){loadlist($_,0)} ;
+
+finished();
+
+sub usage{
+	print <<ERR;
+Option, Playlist, or Directory not found
+
+Usage: ampd [options] <[playlist(s)] | [song(s)] | [directory(s)]>
+
+options:
+
+	-m --make 			:Make a playlist out of the
+	-ma --make-sort-a    	 	directories specified, the last argument
+	-mn --make-sort-n    	 	is always the playlist it writes to.
+	-mp --make-play
+
+	-cat --catalog (opts)		:Access the internal catalog (see section Catalog in README)
+
+	-r --repeat	
+	-rp --repeat-list		:Repeat [playlist] or [song] (song by default)
+							(WARNING: This loops forever..)
+
+	-1 --play-once			:Play [song] once,
+
+	-s --shuffle			:Shuffle [playlist].
+
+	-d --dir			:Play all mp3's in [directory(s)],
+
+	-v --version 			:Display version,
+
+View README for more in depth explanation.
+
+ampd $VER (c) Marshall Culpepper.
+ERR
+exit;
+}
+sub finished{
+system("clear");
+print <<THANKS;
+
+Thank you for using ampd $VER!! 
+
+~Marshall [ampd\@mail.com]
+
+THANKS
+exit;
+}
+sub mke{
+	$|=1;
+	print "Making...\n";
+	@dir=@ARGV[1..$#ARGV-1];
+	$playlist = $ARGV[$#ARGV] ? $ARGV[$#ARGV] : 'playlist';
+	$sort=substr($ARGV[0],2,1) if $ARGV[0] =~ /\-/;
+	$sort = substr($ARGV[0],12,1) if $ARGV[0] =~ /\-\-/;
+	undef $sort if $sort eq 'p';
+	$play = 1 if !$sort;
+	chop($PWD=`pwd`);
+	$multiple=1 if $#dir >= 1;
+	usage() if !@dir;
+	if (!$multiple){
+		$dir = $dir[0];
+		print "Opening $dir..\n";
+		chop($pwd=`pwd`);
+		chdir($dir);
+		opendir(M,"$dir") || die_nice("error opening directory $dir: $!\n");
+		print "Retrieving MP3s..\n";
+		chop($pwd=`pwd`);
+		@r=grep{/\.mp3/i} readdir(M);
+		@r=sort(bynum(@r)) if $sort eq 'n' or !$sort;
+		@r=sort(@r) if $sort eq 'a';
+		@mp3s=map{ $_="$pwd/$_" } (@r);	
+		closedir(M);
+		print "Writing Playlist (as \'$playlist\')..\n";
+		makelist("$playlist",@mp3s);
+		print "Done Writing Playlist. Enjoy!\n";
+		loadlist("$playlist",0) if $play;	
+		finish();
+	}else{
+		foreach(@dir){
+			$|=1;
+			$dir="$PWD/$_";
+			print "Opening $dir..\n";
+			print "Retrieving MP3s..\n";
+			opendir(M,"$dir") || die_nice("error opening directory: $!\n");
+			@r=grep{/\.mp3/i} readdir(M);
+			@r=sort(bynum(@r)) if $sort eq 'n' or !$sort;
+        	@r=sort(@r) if $sort eq 'a';	
+			foreach(@r){ $d="$dir/$_";push(@tmp3s,($d))} ;	
+			push(@mp3z,(@tmp3s));
+			closedir(M);
+		}
+		@mp3z=killdupes(@mp3z);
+		@mp3z=sort(bynum(@mp3z)) if $sort eq 'n' or !$sort;
+ 		@mp3z=sort(@mp3z) if $sort eq 'a';
+		closedir(M);
+		print "Writing Playlist (as \'$playlist\')..\n";
+		chdir($PWD); 
+		makelist($playlist,@mp3z);
+		print "Done Writing Playlist. Enjoy!\n";
+		finish();
+	}
+}
+
+sub repeat{
+	$arg = shift @ARGV;
+	$type = $type =~ /\.mp3/ ? 'song' : 'playlist';
+	usage() if !$arg;
+	repeat_song($arg) if $type eq "song";
+	repeatlist($arg) if $type eq "playlist" or !$option;
+}
+	
+sub single{
+	playsong($ARGV[1],1,0,0);
+	finish();
+}
+sub dir{
+	shift @ARGV;
+	for(@ARGV){
+		$dir = $_ || '.';
+		chdir($dir) || die_nice("error opening dir: $!\n");
+		opendir(M,"$dir") || die_nice("error opening dir: $!\n");
+		foreach(grep{/\.mp3/i} readdir(M)){
+			playsong("$_",1,0,0);
+			wait;
+		}
+	}	
+	finish();
+}
+
+sub shuffle {loadlist($ARGV[1],1)}
+
+sub catalog{
+	$catalog = open_catalog();
+	shift @ARGV;
+	$catalog_opt = shift @ARGV;
+	cat_play(shift @ARGV) if $catalog_opt eq 'play';
+	cat_make(shift @ARGV, shift @ARGV) if $catalog_opt eq 'make';
+	cat_del(shift @ARGV) if $catalog_opt eq 'del';
+	cat_rename(shift @ARGV, shift @ARGV) if $catalog_opt eq 'rename';
+	cat_repeat(shift @ARGV) if $catalog_opt eq 'repeat';
+	cat_print() if $catalog_opt eq 'print';
+	cat_syntax() if !$catalog_opt;	
+	finish();
+}
+sub version{
+print <<VERSION;
+
+		ampd $VER by Marshall Culpepper
+		[ampd\@mail.com]
+
+VERSION
+}
+
+sub LoadGenres{
+	$genres =	 [
+	'Blues', 		'Classic Rock', 	'Country', 	'Dance', 	'Disco',
+   	'Funk', 		'Grunge', 		'Hip-Hop', 	'Jazz', 	'Metal',
+   	'New Age', 		'Oldies', 		'Other', 	'Pop', 		'R&B',
+   	'Rap', 			'Reggae', 		'Rock', 	'Techno', 	'Industrial',
+   	'Alternative', 	'Ska', 			'Death Metal', 	'Pranks', 	'Soundtrack',
+   	'Euro-Techno', 	'Ambient', 		'Trip-Hop', 	'Vocal', 	'Jazz+Funk',
+    'Fusion', 		'Trance', 		'Classical', 	'Instrumental', 'Acid',
+ 	'House', 		'Game', 		'Sound Clip', 	'Gospel', 	'Noise',
+ 	'AlternRock', 	'Bass', 		'Soul', 	'Punk', 	'Space',
+    'Meditative', 	'Instrumental Pop', 	'Instr. Rock', 	'Ethnic', 	'Gothic',
+   	'Darkwave', 	'Techno-Industrial', 	'Electronic', 	'Pop-Folk', 	'Eurodance',
+   	'Dream', 		'Southern Rock', 	'Comedy', 	'Cult', 	'Gangsta',
+    'Top 40', 		'Christian Rap', 	'Pop / Funk', 	'Jungle', 	'Native American',
+    'Cabaret', 		'New Wave', 		'Psychadelic', 	'Rave', 	'Showtunes',
+    'Trailer', 		'Lo-Fi', 		'Tribal', 	'Acid Punk', 	'Acid Jazz',
+    'Polka', 		'Retro', 		'Musical', 	'Rock & Roll', 	'Hard Rock',
+    'Folk', 		'Folk-Rock', 		'National Folk','Swing', 	'Fast Fusion',
+    'Bebob', 		'Latin', 		'Revival', 	'Celtic', 	'Bluegrass',
+    'Avantgarde', 	'Gothic Rock', 		'Progr. Rock',	'Psych. Rock', 	'Symphonic Rock',
+   	'Slow Rock', 	'Big Band', 		'Chorus', 	'Easy Listen', 	'Acoustic',
+    'Humor', 		'Speech', 		'Chanson', 	'Opera', 	'Chamber Music',
+    'Sonata', 		'Symphony', 		'Booty Bass', 	'Primus', 	'Porn Groove',
+    'Satire', 		'Slow Jam', 		'Club', 	'Tango', 	'Samba',
+    'Folklore', 	'Ballad', 		'Power Ballad', 'Rhythmic Soul','Freestyle',
+    'Duet', 		'Punk Rock', 		'Drum Solo', 	'A capalla', 	'Euro-House',
+    'Dance Hall'
+	];						
+}
+sub read_ID3{
+	# Thanks to www.id3.org for the great info.
+	my ($file)=@_;
+	open(MP3,$file) || die_nice("error opening file: $!\n");
+	seek(MP3,-128,2);
+	read(MP3,$info,128);
+	return unpack('a3a30a30a30a4a30C1',$info);
+}
+sub loadlist{
+	my ($playlist,$shuffle)=@_;
+	open(plist,$playlist) || die_nice("error opening playlist: $!\n");
+	while (<plist>){
+		next if /^#/;
+		if (/ALIAS\s?\t?\{/ || $block == 1){
+			$block = 1;
+			$block = 0 if /^\s?\t?\}/;
+			$ALIAS[$1]=$2 if /^(\d)\s*\t*=\s*\t*(.*)$/;		
+		}		
+		$type='song' if /\;/;
+		$type='plist' if /\;\;/;
+		($order,$song,$times)=split ';' if $type eq 'song';
+		($order,$song,$times)=split ';;'  if $type eq 'plist';
+		$song =~ s/\$/\\\$/g;	
+		next if !$song || !$times || !$order || !$type;
+		$PLIST{$order}="$song,$times,$type";
+	}
+	if ($shuffle == 1){
+			for(;;){	
+				@keys = keys(%PLIST);
+				$_=int(rand($#keys));
+				$_++ if $_ == 0;	
+				($tsong,$ttime,$ttype)=split(/,/,$PLIST{$_});
+				playsong($tsong,$ttime,0,0,0,1,1) if $ttype eq 'song';
+        		playlist($tsong,$ttime) if $ttype eq 'plist';	
+			}
+	}else{
+		$i = 0;
+		foreach (@nav = sort bynum(keys %PLIST)){
+			($tsong,$ttime,$ttype)=split(/,/,$PLIST{$_});
+			#NEED HELP!!! :(
+			#prototype code for playlist navigation (NOT working)
+			#
+			#$finished = 0;
+			#$SIG{CHLD} = sub{$finished = 1};
+			#if(fork){
+			#	$key = 0;
+			#	while(!$finished){
+			#		ReadMode 4;
+			#		while(!($key = ReadKey(-1))){next};
+			#		ReadMode 0;
+			#		print 'KEY ==> '. $key; #<-- Debugging purposes
+			#		if ($key eq '+' ){
+			#			$stop = 1;
+			#			$i = 0 if $i==$#nav-1;
+			#			playsong(split(/\|/,$PLIST{$nav[++$i]}));
+			#		}
+			#		if ($key  eq '-' ){
+			#			$stop = 1;
+			#			$i = $#nav if $i = 0;
+			#			playsong(split(/\|/, $PLIST{$nav[--$i]}));
+			#		}
+			#		if ($key =~ /(\d)/){
+			#			$stop = 1;
+			#			$a = $1;
+			#			playsong(split(/\|/, $PLIST{$nav[++$a]}));
+			#		}
+			#	}
+			#}else{			
+			#	for(1..$ttime){exec("ampd -1 $tsong")}
+			playsong($tsong,$ttime,0,0,0,$_,$ttime) if $ttype eq 'song';
+        			playlist($tsong,$ttime,0,0) if $ttype eq 'plist';
+    			#}
+			#$i++;
+		}
+	}
+1;
+}
+
+sub makelist{
+	my ($location,@playlist) = @_;
+	open(LIST,">$location");
+print LIST <<COMMENT;
+#######################
+#    ampd PLAYLIST    #
+#######################
+COMMENT
+        $i=1;
+        foreach(@playlist){
+                print LIST "$i\;$_\;1\n";
+                $i++;
+        }
+	close(LIST);
+}
+sub playsong{
+	my ($song,$times,$title,$artist,$album,$complete, $total)=@_;
+	$song=~ s/\\\$(\d+)/$ALIAS[$1]/eg if $song=~ /\\\$/;
+	my $info = get_mp3info($song);
+	($tag,$title,$artist,$album,$year,$comment,$g)=read_ID3($song) if !$title &&  !$artist && !$album;
+	
+	$tag = 'TAG' if $_[2] && $_[3] && $_[4];
+	if ($tag eq 'TAG'){
+		$title=~ s/(^\s*|\s*$)//g;
+		$album=~ s/(^\s*|\s*$)//g;
+		$artist=~ s/(^\s*|\s*$)//g;
+	}else{
+		$title = 'No Title';
+		$artist = 'No Artist';
+		$album = 'No Album';
+	}
+	$title ||= 'No Title';
+	$artist||= 'No Artist' ;
+	$album ||= 'No Album';
+	$genre = $g == 255 ? 'No Genre' : $genres->[$g];
+	$title = colorize($title,$title_attrib,$title_fg,$title_bg);
+	$artist = colorize($artist,$artist_attrib,$artist_fg,$artist_bg);
+	$album = colorize($album,$album_attrib, $album_fg, $album_bg);
+	$genre = colorize($genre, $genre_attrib, $genre_fg, $genre_bg);
+	system('clear');
+	$terminal->Tgoto('cm',0,0,STDOUT);
+	$info_str = "|$title| |$artist| |$album| |$genre|";
+	$file_str = colorize("\($song\)", $file_attrib, $file_fg, $file_bg);
+	$terminal->Tpad($info_str . " " x 5 . colorize("$complete of $total",bold) . " " x 5 .colorize("ampd $VER",bold,0,0),1,STDOUT);
+	if(($width, $height) = GetTerminalSize())
+	{
+			$paint = " " x $width;
+			for(1..$height)
+			{
+				$terminal->Tgoto('cm',0,$_,STDOUT);
+				$terminal->Tpad(colorize($paint,none,0,$main_bg),1,STDOUT);
+			}
+	}
+	$terminal->Tgoto('cm',0,2,STDOUT);
+	$terminal->Tpad($file_str, 1, STDOUT);
+	foreach(1..$times){
+	 	$done =0;
+	 	$SIG{CHLD} = sub{$done = 1};
+		if (fork){
+			$a = 0;
+			$b = 0;
+			if ($config->{busy_icon} eq '|' || !$config->{busy_icon})
+			{
+				%next = (
+					'|' => '/',
+					'/' => '-',
+					'-' => "\\",
+					"\\" => '|'
+				);
+			$step = '|';
+			}elsif ($config->{busy_icon} eq 'o')
+			{
+				%next = (
+					'.'	=>	'o',
+					'o'	=>	'0',
+					'0'	=> 	'O',
+					'O'	=>	'.'
+				);
+			$step = '.';
+			}
+			while(!$done){
+				$step = $next{$step};
+				$cstep = colorize($step, $elapsed_attrib, $elapsed_fg, $elapsed_bg);
+				$SIG{INT}=sub{break};
+				# break if $stop; #See line 302 :)
+				$|=1;
+				sleep 1;
+				$a++;
+				$a = '00' if $a == 0;
+				$b = '00' if $b == 0;
+				$a="0$a" if $a<10 && length($a) < 2;
+				$b="0$b" if $b<10 && length($b) < 2;
+				$time=colorize("|$b:$a|", $elapsed_attrib, $elapsed_fg,
+$elapsed_bg);
+				$total = colorize("|$info->{MM}:$info->{SS}|",$total_attrib,
+$total_fg, $total_bg);
+				$perdone = ($b * 60) + $a;
+				$pertotal = ($info->{MM} * 60) + $info->{SS};
+				$percent = int(($perdone/$pertotal) *100);
+				$num = int($percent/2);
+				if($a==60){$b++;$a=0}
+				$terminal->Tgoto('cm',0,6,STDOUT);
+				$terminal->Tgoto('ol',0,0,STDOUT);
+				$status = colorize("[",none,0,$main_bg). colorize("_",bold,0,$status_fg) x ($num)  . colorize(" ",bold,0,$status_bg) x (50-$num) . colorize("]",bold,0,$main_bg);
+				$terminal->Tgoto('cm', 0,8,STDOUT);
+				$terminal->Tpad($status.$time.$cstep.$total,1,STDOUT);
+			}
+			wait;
+		}else { $song=~ s/ /\\ /g; for(1){exec("$mpg123 $song")} }
+	}
+}
+sub playlist{
+	my($list,$times)=@_;
+	print "Playing List $list..\n";
+	foreach(1..$times){
+		`ampd $list`;
+		wait;
+		$SIG{INT}=sub{break};
+	}
+}
+
+sub repeat_song{
+	print "Repeating Song $_[0]..\n";
+	for(;;){playsong($_[0],1,0,0)}	
+}
+
+sub repeatlist{
+	print "Repeating List $_[0]..\n";
+	for(;;){loadlist($_[0],0)}
+	
+}
+
+sub colorize{
+	my ($string, $attribute, $fg, $bg) = @_ ;
+	%attribs = (
+		none => 0, bold => 1, 
+		underline => 4, blink => 5, 
+		reverse => 7, concealed => 8
+	);
+	%colors_fg = ( 
+		black => ';30', red => ';31', 
+		green => ';32', yellow => ';33', 
+		blue => ';34', magenta => ';35', 
+		cyan => ';36', white => ';37', 0 => ''
+	);
+	%colors_bg = ( 
+		black => ';40', red => ';41', 
+		green => ';42', yellow => ';43', 
+		blue => ';44', magenta => ';45', 
+		cyan => ';46', gray => ';47', 0 => ''
+	);
+	return qq#\e[$attribs{$attribute}$colors_fg{$fg}$colors_bg{$bg}m$string\e[m#;
+}
+sub align{
+	my ($string, $align) = @_;
+	my ($width, $height) = GetTerminalSize();
+	if($align =~ /right/i)
+	{
+		return " " x ($width - length($string)) . $string;
+	}elsif($align =~ /center/i)
+	{
+		return " " x (($width - length($string)) / 2) . $string;
+	}else{
+		return $string;
+	}
+}
+	
+sub LoadColors{
+	
+	$file_attrib	= $config->{file_attrib} || 'bold';
+	$file_fg		= $config->{file_fg} || 'yellow';
+	$file_bg		= $config->{file_bg} || 'gray';
+
+	$title_attrib	= $config->{title_attrib} || 'bold';
+	$title_fg		= $config->{title_fg} || 'black';
+	$title_bg		= $config->{title_bg} || 'gray';
+	
+	$artist_attrib	= $config->{artist_attrib} || 'bold';
+	$artist_fg		= $config->{artist_fg} || 'black';
+	$artist_bg		= $config->{artist_bg} || 'gray';
+	
+	$album_attrib	= $config->{album_attrib} || 'bold';
+	$album_fg		= $config->{album_fg} || 'black';
+	$album_bg		= $config->{album_bg} || 'gray';
+	
+	$genre_attrib	= $config->{genre_attrib} || 'bold';
+	$genre_fg		= $config->{genre_fg} || 'black';
+	$genre_bg		= $config->{genre_bg} || 'gray';
+
+	$main_bg		= $config->{main_bg} || 'gray';
+	$status_fg		= $config->{status_fg} || 'blue';
+	$status_bg		= $config->{status_bg} || 'gray';
+	
+	$elapsed_attrib	= $config->{elapsed_attrib} || 'bold';
+	$elapsed_fg		= $config->{elapsed_fg} || 'blue';
+	$elapsed_bg		= $config->{elapsed_bg} || 'gray';
+
+	$total_attrib	= $config->{total_attrib} || 'bold';
+	$total_fg		= $config->{total_fg} || 'blue';
+	$total_bg		= $config->{total_bg} || 'gray';
+		
+
+}
+
+sub bynum{$a<=>$b}
+
+sub killdupes{
+	my @dupes = @_;
+	undef %saw;
+ 	return grep(!$saw{$_}++, @dupes);
+}
+sub configure{
+	
+	open(CONFIG , "$ENV{HOME}/.ampd" ) or die_nice("error opening config file: $!\n");
+	while(<CONFIG>)
+	{	
+		s/\s//g;
+		next if /^#/ or $_ !~ /=/;
+		/^(.*)=(.*)$/;
+		$config{lc($1)} = lc($2);
+	}
+$config = \%config;
+}
+
+sub cat_syntax{
+
+print <<CAT_SYNTAX;
+No Catalog Command Specified. Catalog Usage:
+	ampd [-cat | --catalog] command [args]
+
+	commands
+		
+		print			: prints the catalog in human readable format.
+		make			: first arg is the directory to make a section out of
+						  second is the section name.
+		del			: arg is the section to delete.
+		rename			: first arg is the current name, second is the one
+						  you're changing it too.
+		play			: arg is the section to play (or single song in a
+						  section, split with the unix '/')
+
+for more in depth explanation, see Catalog section in README.
+
+CAT_SYNTAX
+}
+sub open_catalog{
+	my ($catalog, $section);
+	my $cat = $config->{catalog} || "$ENV{HOME}/.ampd_catalog";
+	$cat =~ s/\~/$ENV{HOME}/eg;
+	open(CATALOG,$cat) || die_nice("error opening catalog: $!\n");
+	while(<CATALOG>)
+	{
+		if (/_SECTION/)
+		{
+			s/_SECTION//;
+			/\s*\t*(.*)\s*\t*\{/;
+			$section = $1;
+			$section =~ s/[\n\s\t]//g;
+			$block = 1;
+		}
+		if ($block)
+		{
+			$block = 1;
+			$block = 0 if /^\s?\t?\}/;
+			$catalog{$section}{$1}{label} = $2 if /LABEL\[(.*)\]\s*\t*=\s*\t*(.*)$/;
+			$catalog{$section}{$1}{artist} = $2 if /ARTIST\[(.*)\]\s*\t*=\s*\t*(.*)$/;
+			$catalog{$section}{$1}{file} = $2 if /FILE\[(.*)\]\s*\t*=\s*\t*(.*)$/;		
+			$catalog{$section}{$1}{album} = $2 if /ALBUM\[(.*)\]\s*\t*=\s*\t*(.*)$/;
+		}
+		push(@sections, $section);
+	}		
+	close(CATALOG);
+	return \%catalog;
+	return 0;
+}	 		
+	 		
+sub cat_play{
+
+ 	($catalog_ref) = @_;
+	my $type = 'section';
+	$type = 'song' if $catalog_ref =~ /\//;;
+	if($type eq 'song')
+	{
+		my ($section,$id) = split /\// => $catalog_ref;
+		die_nice("section doesn\'t exist\n") if !$catalog->{$section};
+		my ($label, $artist, $file, $album) = ($catalog->{$section}{$id}{label},$catalog->{$section}{$id}{artist}, $catalog->{$section}{$id}{file}, $catalog->{$section}{$id}{album}); 		
+		playsong($file,1,$label,$artist, $album,1,1);
+	}elsif($type eq 'section'){
+		
+		$catalog_ref =~ s/\n//g;
+		die_nice("section doesn\'t exist\n") if !$catalog->{$catalog_ref};
+		print "Playing Section \'$catalog_ref\'\n";
+		$total = scalar(keys(%{$catalog->{$catalog_ref}}));
+		for(1..$total)
+		{
+			($label, $artist, $file, $album)=( $catalog->{$catalog_ref}{$_}{label}, $catalog->{$catalog_ref}{$_}{artist}, $catalog->{$catalog_ref}{$_}{file}, $catalog->{$catalog_ref}{$_}{album} );
+			next if !$file;
+			playsong($file,1,$label,$artist, $album,$_,$total);
+		}
+	}
+}
+
+sub redirect{
+	open SAVEERR, ">&STDERR";
+	open STDERR, ">/dev/null";
+}
+
+sub cat_make{
+	
+	my ($directory, $section) = @_;
+	die_nice("section already exists\n") if $catalog->{$section};
+	chdir($directory);
+	chop($pwd = `pwd`);
+	opendir(DIR, $directory) || die_nice("unable to open directory: $!\n");
+	print "Creating Section \'$section\'...\n";
+	my $cat = $config->{catalog} || "$ENV{HOME}/.ampd_catalog";
+	$cat =~ s/\~/$ENV{HOME}/eg;
+	print $cat . "\n";
+	open(CAT, ">>$cat") || die_nice("unable to open catalog: $!\n");
+	print CAT "_SECTION $section {\n";
+	$id = 0;
+	foreach(sort bynum(grep{/\.mp3/i} readdir(DIR)))
+	{
+		$id++;
+		my @info = read_ID3($_);
+		($title, $artist, $album) = @info[1..3];
+		if($info[0] ne 'TAG'){ $title = 0; $artist = 0; $album = 0 }
+		print "Adding \'$_\'...\n";
+		print CAT <<THIS;
+			FILE[$id] = $pwd/$_
+			LABEL[$id] = $title
+			ARTIST[$id] = $artist
+			ALBUM[$id] = $album
+			
+THIS
+	}
+	print CAT "}\n";
+	print "Done\n";
+	finish()
+}
+
+sub cat_print{
+	for(keys %$catalog)
+	{
+		print $_ . "\n";
+		$sec = $_;
+		for(keys %{$catalog->{$sec}})
+		{
+			print "\t" . $catalog->{$sec}{$_}{label} . "\n";
+		}
+	}
+}
+
+sub cat_del{
+	my ($section) = @_;
+	my $cat = $config->{catalog} || "$ENV{HOME}/.ampd_catalog";
+	$cat =~ s/\~/$ENV{HOME}/eg;
+	open(CAT, $cat) || die_nice("error opening catalog: $!\n");
+	while(<CAT>)
+	{
+		$block = 1 if /_SECTION\s*$section\s*\{/;
+		push(@new_catalog, $_) if !$block;
+		undef $block if ($block == 1 && /^\s*\}/);
+   	}
+	open(CAT, ">$cat") ||  die_nice("error writing to catalog: $!\n");
+   	print CAT @new_catalog;
+}
+
+sub cat_rename{
+	my ($old_section, $new_section) = @_;
+	my $cat = $config->{catalog} || "$ENV{HOME}/.ampd_catalog";
+	$cat =~ s/\~/$ENV{HOME}/eg;
+	open(CAT, $cat) || die_nice("error opening catalog: $!\n");
+	@CAT = <CAT>;
+	for(@CAT){ s/$old_section/$new_section/ if /_SECTION\s*$old_section\s*\{/}
+	close CAT;
+	open(CAT, ">$cat") || die_nice("error writing to catalog: $!\n");
+	print CAT @CAT;
+	close CAT;
+	
+}	
+			
+sub cat_repeat{
+	my ($catalog_ref) = @_;
+	for(1..100){cat_play($catalog_ref)};
+}
+	
+sub encode{
+	my @tracks = split /[\-:,\.]+/ => shift @ARGV;
+	my $track_template = $config->{template};
+	my $eject = $config->{eject};	
+	
+	system("clear");
+	if ($eject){
+	$terminal->Tgoto('cm', 0, 0, STDOUT);
+	$terminal->Tpad(align(colorize("Please insert a CD\n", blink, blue, 0), center), 1, STDOUT);
+	system("eject");
+	$ready = 0;
+	$SIG{INT} = sub{$ready = 1};
+	while(not $ready)
+	{
+		$terminal->Tgoto('cm',0,1,STDOUT);
+		$terminal->Tpad(align(colorize("Hit \'Ctrl-C\' to insert CD\n",none,red,0),center), 1, STDOUT);
+	}
+	$terminal->Tpad(align(colorize("Loading...\n",none,red),center), 1, STDOUT);
+	system("eject -t");
+	}
+	system("clear");
+	$cdparanoia = $config->{cdparanoia} || chop($a=system("which cdparanoia"));
+	@info = `$cdparanoia -Q 2>&1`;
+	$tracks = @info - 12;
+	for(1..$tracks)
+	{
+		$terminal->Tgoto('cm', 0, 0, STDOUT);
+		$terminal->Tpad(align(colorize("Encoding Track $_\ to mp3...", bold, blue) => center), 1, STDOUT);
+		open(CDPARANOIA, "cdparanoia -eB \"$_\" 2>&1 |");
+		system("clear");
+		while(<CDPARANOIA>)
+		{
+			if(/\[(.*)(\>)(.*)/)
+			{
+				$completed = length($1) + 1 if $1 ;
+				$complete = int(($completed / 30) * 100);
+				$terminal->Tgoto('cm',0,1,STDOUT);
+				$terminal->Tpad(align(colorize("$complete%",bold),center),1,STDOUT);
+			}
+		}	
+	}	
+}
+sub die_nice{
+	(undef, $caller) = split /::/ => (caller(0))[3];
+	
+	print colorize($caller, bold) . ": @_";
+	exit;
+}	
